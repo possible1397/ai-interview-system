@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+build/
+
+# 環境變數
+.env
+.env.local
+
+# 資料庫
+*.db
+*.db-journal
+prisma/dev.db*
+
+# 候選人上傳檔案（含個資，不進版控）
+uploads/
+
+# 系統檔案
+.DS_Store
+*.log
+next-env.d.ts

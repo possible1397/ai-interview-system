@@ -1,0 +1,126 @@
+// AI 自動面試系統 — 資料模型
+//
+// 開發階段使用 SQLite；正式環境將 provider 改為 "postgresql" 即可。
+// 為維持兩種資料庫的相容性，此 schema 不使用 enum 與原生 Json 型別，
+// 列舉值以字串表示（各欄位註解列出合法值），結構化資料以 JSON 字串儲存。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 職缺（對應規劃文件第二章）
+model Job {
+  id            String   @id @default(cuid())
+  title         String
+  location      String?
+  description   String?
+  mustHave      String?
+  niceToHave    String?
+  yearsRequired String?
+  languageReq   String?
+  shift         String?
+  salaryRange   String?
+  /// AI 面試需確認的重點，JSON string[]
+  focusPoints   String   @default("[]")
+  /// draft | active | closed
+  status        String   @default("draft")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  candidates Candidate[]
+}
+
+/// 候選人（對應規劃文件第三章）
+model Candidate {
+  id         String  @id @default(cuid())
+  name       String
+  email      String
+  jobId      String
+  resumeFile String?
+  /// 履歷純文字內容
+  resumeText String?
+  /// LLM 解析出的結構化履歷，JSON object
+  profile    String  @default("{}")
+  /// pending | parsed | confirmed | failed
+  parseStatus String @default("pending")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  interviews Interview[]
+
+  @@index([jobId])
+}
+
+/// 一次面試（對應規劃文件第五至十章）
+model Interview {
+  id          String @id @default(cuid())
+  candidateId String
+  /// 候選人面試連結的隨機 token
+  token       String @unique
+  /// LLM 產生的專屬面試大綱，JSON object
+  outline     String @default("{}")
+  /// invited | scheduled | in_progress | completed | no_show | cancelled
+  status      String @default("invited")
+  /// 目前進行到的面試階段代號，見 src/lib/interview-engine.ts
+  stage       String @default("opening")
+
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  /// 候選人同意面試告知的時間（對應第七章）
+  consentAt   DateTime?
+  /// 候選人是否選擇不保留錄音
+  recordingOptOut Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  candidate  Candidate         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  transcript TranscriptEntry[]
+  report     Report?
+
+  @@index([candidateId])
+}
+
+/// 逐字稿單筆發言（對應規劃文件第十章）
+model TranscriptEntry {
+  id          String @id @default(cuid())
+  interviewId String
+  /// ai | candidate
+  role        String
+  text        String
+  /// 相對於面試開始的毫秒數，供 Recruiter 回放定位
+  offsetMs    Int    @default(0)
+  /// 該發言所屬的面試階段
+  stage       String?
+
+  createdAt DateTime @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@index([interviewId])
+}
+
+/// 候選人面談報告（對應規劃文件第十一、十二章）
+model Report {
+  id          String @id @default(cuid())
+  interviewId String @unique
+  /// 報告內容，JSON object（見 src/lib/report.ts 的 CandidateReport）
+  content     String @default("{}")
+  /// pending | proceed | hold | follow_up | not_suitable
+  recruiterStatus String @default("pending")
+  recruiterNote   String?
+  reviewedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+}
